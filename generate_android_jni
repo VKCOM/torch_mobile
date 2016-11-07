@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# user-defined
+NDK_PATH="/usr/local/share/android-ndk-r10e"
+
+build_openblas() {
+  platform=android-$2
+  toolchain_dir=toolchain-${platform}
+  echo ${toolchain_dir}
+
+  mkdir -p build/${toolchain_dir}
+
+  if [[ $1 = ARMV7 ]]; then
+    if [[ $2 > 19 ]]; then
+      echo "Please, select earlier toolchain version with the support of hard floats"
+      exit 1
+    fi
+    toolchain=arm-linux-androideabi-$3
+    tarch=arm
+  elif [[ $1 = ARMV8 ]]; then
+    toolchain=aarch64-linux-android-$3
+    tarch=arm64
+  else
+    echo "$1 architecture is not supported!"
+    exit 1
+  fi
+
+  sh ${NDK_PATH}/build/tools/make-standalone-toolchain.sh \
+    --platform=${platform} \
+    --install-dir=build/${toolchain_dir} \
+    --arch=${tarch} \
+    --toolchain=${toolchain} \
+    --ndk-dir=${NDK_PATH}
+
+  PATH="$(pwd)/build/${toolchain_dir}/bin:$PATH"
+  
+  cd OpenBLAS && make clean
+  if [[ $1 = ARMV8 ]]; then
+    make TARGET=$1 BINARY=64 HOSTCC=gcc CC=aarch64-linux-android-gcc NOFORTRAN=1
+  elif [[ $1 = ARMV7 ]]; then
+    make TARGET=$1 HOSTCC=gcc CC=arm-linux-androideabi-gcc NOFORTRAN=1
+  fi
+
+  openblas_path="$(pwd)"
+  cd ..
+  
+  return 0
+}
+
+build_torch() {
+  if [[ $1 = ARMV7 ]]; then
+    cmake_c_compiler=$(pwd)/build/${toolchain_dir}/bin/arm-linux-androideabi-gcc
+    cmake_cxx_compiler=$(pwd)/build/${toolchain_dir}/bin/arm-linux-androideabi-g++
+    cflags="-O2 -mfpu=neon -mhard-float -D_NDK_MATH_NO_SOFTFP=1 -march=armv7-a -mfloat-abi=hard"
+    linker_flags="-Wl,--no-warn-mismatch -lm_hard"
+  elif [[ $1 = ARMV8 ]]; then
+    cmake_c_compiler=$(pwd)/build/${toolchain_dir}/bin/aarch64-linux-android-gcc
+    cmake_cxx_compiler=$(pwd)/build/${toolchain_dir}/bin/aarch64-linux-android-g++
+    cflags="-D__NEON_HL__ -Ofast"
+    linker_flags=""
+  else
+    exit 1
+  fi
+
+   mkdir -p build/$1 && cd build/$1 && rm CMakeCache.txt && make clean
+  
+  cmake -DCMAKE_C_COMPILER="${cmake_c_compiler}" -DCMAKE_CXX_COMPILER="${cmake_cxx_compiler}" -DCFLAGS="${cflags}" -DLINKER_FLAGS="${linker_flags}" -DOPENBLAS_PATH="${openblas_path}" ../../ && make
+
+  cd ../../
+
+  return 0
+}
+
+if [[ ${ARCH} = ARMV7 ]]; then
+  app_abi=armeabi-v7a-hard
+elif [[ ${ARCH} = ARMV8 ]]; then
+  app_abi=arm64-v8a
+else
+  echo "ABI is not supported for architecture: ${ARCH}"
+  exit 1
+fi
+
+# folder for static libs
+mkdir -p jni/libs/${app_abi}
+# folder for jni libs
+mkdir -p jni/jniLibs
+# folder for temporary obj files
+mkdir -p jni/obj
+
+# build libopenblas
+build_openblas ${ARCH} ${TOOLCHAIN} ${GCC}
+
+cp -L ${openblas_path}/libopenblas.a jni/libs/${app_abi}/
+
+# build libtorch and etc
+build_torch ${ARCH}
+
+cp build/${ARCH}/pkg/torch/libtorch.a jni/libs/${app_abi}/
+cp build/${ARCH}/nn/libnn.a jni/libs/${app_abi}/
+cp build/${ARCH}/lib/TH/libTH.a jni/libs/${app_abi}/
+cp build/${ARCH}/lib/luaT/libluaT.a jni/libs/${app_abi}/
+cp build/${ARCH}/exe/lua/libtorch-lua-static.a jni/libs/${app_abi}/
+cp build/${ARCH}/bincompat/libbincompat.a jni/libs/${app_abi}/
+
+# build libtorchwrapper with JNI
+cd jni
+echo -e "APP_PLATFORM := android-${TOOLCHAIN}\n" \
+      "APP_ABI := ${app_abi}\n" \
+      "APP_CFLAGS := -Wno-error=format-security" | tee Application.mk
+ndk-build clean && ndk-build NDK_LIBS_OUT=jniLibs/${app_abi} NDK_OUT=obj/${app_abi}

@@ -1,0 +1,164 @@
+#!/bin/bash
+set -e
+SCRIPT_DIR=$( cd $(dirname $0) ; pwd -P )
+XCODE_ROOT=`xcode-select -print-path`
+IPHONE_SDKVERSION=`xcodebuild -showsdks | grep iphoneos | egrep "[[:digit:]]+\.[[:digit:]]+" -o | tail -1`
+ARM_DEV_CMD="xcrun --sdk iphoneos"
+SIM_DEV_CMD="xcrun --sdk iphonesimulator"
+EXTRA_FLAGS="-miphoneos-version-min=6.0"
+
+configure_exports() {
+    if [[ $1 = arm* ]]; then
+        DEV_CMD=$ARM_DEV_CMD
+    else
+        DEV_CMD=$SIM_DEV_CMD
+    fi
+    if [[ $1 = armv7* ]]; then
+        NEON_FLAGS="-D__NEON__ -mfpu=neon"
+    else
+        if [[ $1 = arm64* ]]; then
+            NEON_FLAGS="-D__NEON_HL__" #"-mfpu=neon -mfloat-abi=softfp -enable-threads" #" -D__NEON_HL__"
+        else
+            NEON_FLAGS=""
+        fi
+    fi
+    export CXX="$DEV_CMD clang++ -DNUM_THREADS=4 -Ofast -arch $1 $EXTRA_FLAGS $NEON_FLAGS"
+    export CC="$DEV_CMD clang -DNUM_THREADS=4 -Ofast -arch $1 $EXTRA_FLAGS $NEON_FLAGS"
+
+    XCMAKE=`$DEV_CMD --find make`
+    XCPATH=`dirname $XCMAKE`
+    export PATH="$XCPATH:$PATH"
+    XCRANLIB=`$DEV_CMD --find ranlib`
+    XCPATH=`dirname $XCRANLIB`
+    export PATH="$XCPATH:$PATH"
+}
+
+
+generate_arch() {
+    configure_exports $1
+    rm -rf $SCRIPT_DIR/build
+    mkdir -p $SCRIPT_DIR/build
+    cd $SCRIPT_DIR/build
+    SROOT=`$DEV_CMD --show-sdk-path`
+    cmake .. -DCMAKE_INSTALL_PREFIX="$SCRIPT_DIR/installed/" -DCMAKE_OSX_SYSROOT=$SROOT
+    make install
+    cd $SCRIPT_DIR
+    
+    mkdir -p $SCRIPT_DIR/framework/lua
+    mkdir -p $SCRIPT_DIR/framework/lib/$1
+    mkdir -p $SCRIPT_DIR/framework/include
+
+    # copy includes
+    cp -r $SCRIPT_DIR/installed/include/torch/* $SCRIPT_DIR/framework/include
+    rm -rf $SCRIPT_DIR/installed/
+    
+    # copy libs
+    cp $SCRIPT_DIR/build/exe/lua/libtorch-lua-static.a       $SCRIPT_DIR/framework/lib/$1/
+    cp $SCRIPT_DIR/build/lib/luaT/libluaT.a                  $SCRIPT_DIR/framework/lib/$1
+    cp $SCRIPT_DIR/build/lib/TH/libTH.a                      $SCRIPT_DIR/framework/lib/$1
+    cp $SCRIPT_DIR/build/pkg/torch/libtorch.a                $SCRIPT_DIR/framework/lib/$1
+    
+    cp $SCRIPT_DIR/build/3rdparty/nn/libnn.a                 $SCRIPT_DIR/framework/lib/$1
+    
+    # copy lua scripts
+    mkdir -p $SCRIPT_DIR/framework/lua/torch
+    cp -r $SCRIPT_DIR/pkg/torch/*.lua $SCRIPT_DIR/framework/lua/torch/
+
+    mkdir -p $SCRIPT_DIR/framework/lua/dok
+    cp -r $SCRIPT_DIR/pkg/dok/*.lua $SCRIPT_DIR/framework/lua/dok/
+    
+    mkdir -p $SCRIPT_DIR/framework/lua/nn
+    cp -r $SCRIPT_DIR/3rdparty/nn/*.lua $SCRIPT_DIR/framework/lua/nn/
+    
+    mkdir -p $SCRIPT_DIR/framework/lua/optnet
+    cp -r $SCRIPT_DIR/3rdparty/optimize-net/*.lua $SCRIPT_DIR/framework/lua/optnet/
+}
+
+extract_archive() {
+    mkdir $1
+    cd $1
+    ar -x ../lib$1.a
+    cd ..
+}
+
+extract_recombine() {
+    cd $SCRIPT_DIR/framework/lib/$1
+    extract_archive luaT
+    extract_archive nn
+    extract_archive TH
+    extract_archive torch
+    extract_archive torch-lua-static
+    ar -qc libtorch-$1.a luaT/*.o nn/*.o TH/*.o \
+        torch/*.o torch-lua-static/*.o
+    cd $SCRIPT_DIR
+}
+
+lipo_libs() {
+    $ARM_DEV_CMD lipo -create                          \
+    $SCRIPT_DIR/framework/lib/arm64/libtorch-arm64.a   \
+    -output $SCRIPT_DIR/framework/lib/libtorch.a
+}
+
+rm -rf $SCRIPT_DIR/framework/lua
+rm -rf $SCRIPT_DIR/framework/lib
+rm -rf $SCRIPT_DIR/framework/include
+rm -rf $SCRIPT_DIR/Torch.framework
+
+echo "generating torch"
+generate_arch arm64
+
+echo "extracting archives and recombining"
+extract_recombine arm64
+
+echo "creating universal binary"
+lipo_libs
+
+echo "creating framework"
+mkdir -p $SCRIPT_DIR/Torch.framework/Versions/A/Headers
+cp $SCRIPT_DIR/framework/lib/libtorch.a \
+    $SCRIPT_DIR/Torch.framework/Versions/A/Torch
+cp -r $SCRIPT_DIR/framework/include/* \
+    $SCRIPT_DIR/Torch.framework/Versions/A/Headers
+cp -r $SCRIPT_DIR/framework/lua \
+    $SCRIPT_DIR/Torch.framework/Versions/A/Resources
+cd $SCRIPT_DIR/Torch.framework/Versions
+ln -s A Current
+cd $SCRIPT_DIR/Torch.framework
+ln -s Versions/Current/Torch Torch
+ln -s Versions/Current/Headers Headers
+ln -s Versions/Current/Resources Resources
+
+echo "creating header files"
+HEADER=$SCRIPT_DIR/Torch.framework/Versions/A/Headers/Torch.h
+echo '#ifndef TORCH_IOS_FRAMEWORK_TORCH_H' > $HEADER
+echo '#define TORCH_IOS_FRAMEWORK_TORCH_H' >> $HEADER
+echo '#ifdef __cplusplus' >> $HEADER
+echo 'extern "C" {' >> $HEADER
+echo '#endif' >> $HEADER
+echo '#include "TH/TH.h"' >> $HEADER
+echo '#include "lua.h"' >> $HEADER
+echo '#include "luaconf.h"' >> $HEADER
+echo '#include "lauxlib.h"' >> $HEADER
+echo '#include "luaT.h"' >> $HEADER
+echo '#include "lualib.h"' >> $HEADER
+echo '#ifdef __cplusplus' >> $HEADER
+echo '}' >> $HEADER
+echo '#endif' >> $HEADER
+echo '#endif' >> $HEADER
+echo >> $HEADER
+
+cat $SCRIPT_DIR/Torch.framework/Versions/A/Headers/luaT.h | \
+    sed 's/include [<]/include "/g' | \
+    sed 's/[>]$/"/g' > \
+    $SCRIPT_DIR/Torch.framework/Versions/A/Headers/luaT-new.h
+
+mv  $SCRIPT_DIR/Torch.framework/Versions/A/Headers/luaT-new.h \
+    $SCRIPT_DIR/Torch.framework/Versions/A/Headers/luaT.h
+
+echo "==> exported complete framework in Torch.framework"
+echo "    in Xcode just drag Torch.framework into"
+echo "    Build Phases > Link Binary with Libraries"
+echo "    and add path to Torch.framework parent folder in"
+echo "    Build Settings > Framework Search Paths"
+echo
+echo "    Include headers with #include <Torch/Torch.h>"
