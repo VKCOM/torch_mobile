@@ -14,6 +14,13 @@ Torch7 has to be installed prior to building the project. A binary tool 'torch' 
 
 Building
 ========
+To get the code:
+`git clone --recursive https://github.com/VKCOM/torch_mobile.git`
+
+To compile and link all dependencies and torch:
+
+iOS:
 $ ./generate_ios_framework
 
-$ NDK_PATH=`path to your android ndk` TOOLCHAIN=`android version` ARCH=`architecture` GCC=`GCC version` bash generate_android_jni
+Android:
+$ NDK_PATH=`path to your android ndk` TOOLCHAIN=`android version` ARCH=`architecture` GCC=`GCC version`./generate_android_jni
