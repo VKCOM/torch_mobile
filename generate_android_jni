@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # user-defined
-NDK_PATH="/usr/local/share/android-ndk-r10e"
+PATH="${NDK_PATH}:${PATH}"
 
 build_openblas() {
   platform=android-$2
