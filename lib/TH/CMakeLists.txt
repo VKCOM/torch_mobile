@@ -37,6 +37,12 @@ ELSE()
   ENDIF(BLAS_FOUND)
 ENDIF()
 
+IF (DEFINED BLAS_INFO)
+  IF (${BLAS_INFO} equal "accelerate")
+    add_definitions(-DWITH_ACCELERATE)
+  ENDIF(${BLAS_INFO} equal "accelerate")
+ENDIF()
+
 FIND_PACKAGE(LAPACK)
 IF(LAPACK_FOUND)
   SET(USE_LAPACK 1)

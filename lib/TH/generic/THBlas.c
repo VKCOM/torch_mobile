@@ -1,6 +1,6 @@
-#include "accelerate/accelerate.h"
-
-#ifndef __ACCELERATE__
+#ifdef WITH_ACCELERATE
+  #include "accelerate/accelerate.h"
+#else
   #include <cblas.h>
 #endif
 
