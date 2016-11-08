@@ -4,8 +4,8 @@ Torch7 Library for mobile
 This package has been modified to compile Torch7 for iOS and for Android with the following architectures: armv7, armv7a, arm64.
 
 Code is inherited from the following projects:
-[Torch7 library for iOS by Clement Farabet](https://github.com/clementfarabet/torch-ios)
-[OpenBLAS by Zhang Xianyi](https://github.com/xianyi/OpenBLAS)
+* [Torch7 library for iOS by Clement Farabet](https://github.com/clementfarabet/torch-ios)
+* [OpenBLAS by Zhang Xianyi](https://github.com/xianyi/OpenBLAS)
 
 Requirements
 ============
