@@ -30,7 +30,8 @@
 #define LUA_USER_SCRIPT_FAILURE -4
 #define LUA_SCRIPT_FAILURE -5
 #define LUA_ALREADY_EXIST -6
-#define BITMAP_LOAD_ERROR -7
+#define LUA_TEST_SCRIPT_ERROR -7
+#define BITMAP_LOAD_ERROR -8
 #define MAX_STRING_LENGTH 1024
 
 lua_State* state = NULL;
@@ -98,10 +99,11 @@ int runTorch(const char* luaPaths, const char* initTorchFilePath, const char* in
 
         LOGI("runTorch init NN: OK");
 #ifdef USE_BIN_COMPAT
+#warning "Torch serializer will work in compatibility mode!"
         // load binary compatibility lib
         luaopen_libbincompat(state);
-#endif
         LOGI("runTorch init bincompat: OK");
+#endif
 
         // init user scripts
         err = luaL_dofile(state, mainScriptPath);
@@ -123,6 +125,11 @@ int runTorch(const char* luaPaths, const char* initTorchFilePath, const char* in
             "return o:size(3)"
         );
 
+        if(err)
+        {
+          return LUA_TEST_SCRIPT_ERROR;
+        }
+
         LOGI("runTorch simple NN math: OK");
 
         // check the size of the output tensor
@@ -130,7 +137,10 @@ int runTorch(const char* luaPaths, const char* initTorchFilePath, const char* in
         {
             return LUA_OK;
         }
-
+        else 
+        {
+          return LUA_TEST_SCRIPT_ERROR;
+        }
     }
 
     return LUA_ALREADY_EXIST;
