@@ -18,11 +18,10 @@ To get the code:
 
     git clone --recursive https://github.com/VKCOM/torch_mobile.git
 
-To compile and link all dependencies and Torch
-iOS:
+To build the Torch with all dependencies for iOS:
 
     $ ./generate_ios_framework
 
-Android:
+To build the Torch with all dependencies for Android:
 
     $ NDK_PATH=<path to android ndk> TOOLCHAIN=<android version> ARCH=<architecture> GCC=<gcc version>./generate_android_jni
