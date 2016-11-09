@@ -58,7 +58,7 @@ generate_arch() {
     cp $SCRIPT_DIR/build/lib/TH/libTH.a                      $SCRIPT_DIR/framework/lib/$1
     cp $SCRIPT_DIR/build/pkg/torch/libtorch.a                $SCRIPT_DIR/framework/lib/$1
     
-    cp $SCRIPT_DIR/build/3rdparty/nn/libnn.a                 $SCRIPT_DIR/framework/lib/$1
+    cp $SCRIPT_DIR/build/nn/libnn.a                          $SCRIPT_DIR/framework/lib/$1
     
     # copy lua scripts
     mkdir -p $SCRIPT_DIR/framework/lua/torch
@@ -68,10 +68,7 @@ generate_arch() {
     cp -r $SCRIPT_DIR/pkg/dok/*.lua $SCRIPT_DIR/framework/lua/dok/
     
     mkdir -p $SCRIPT_DIR/framework/lua/nn
-    cp -r $SCRIPT_DIR/3rdparty/nn/*.lua $SCRIPT_DIR/framework/lua/nn/
-    
-    mkdir -p $SCRIPT_DIR/framework/lua/optnet
-    cp -r $SCRIPT_DIR/3rdparty/optimize-net/*.lua $SCRIPT_DIR/framework/lua/optnet/
+    cp -r $SCRIPT_DIR/nn/*.lua $SCRIPT_DIR/framework/lua/nn/
 }
 
 extract_archive() {
@@ -95,6 +92,8 @@ extract_recombine() {
 
 lipo_libs() {
     $ARM_DEV_CMD lipo -create                          \
+    $SCRIPT_DIR/framework/lib/armv7/libtorch-armv7.a   \
+    $SCRIPT_DIR/framework/lib/armv7s/libtorch-armv7s.a \
     $SCRIPT_DIR/framework/lib/arm64/libtorch-arm64.a   \
     -output $SCRIPT_DIR/framework/lib/libtorch.a
 }
@@ -106,9 +105,13 @@ rm -rf $SCRIPT_DIR/Torch.framework
 
 echo "generating torch"
 generate_arch arm64
+generate_arch armv7s
+generate_arch armv7
 
 echo "extracting archives and recombining"
 extract_recombine arm64
+extract_recombine armv7s
+extract_recombine armv7
 
 echo "creating universal binary"
 lipo_libs
