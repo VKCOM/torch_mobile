@@ -38,9 +38,9 @@ ELSE()
 ENDIF()
 
 IF (DEFINED BLAS_INFO)
-  IF (${BLAS_INFO} equal "accelerate")
+  IF (BLAS_INFO STREQUAL "accelerate")
     add_definitions(-DWITH_ACCELERATE)
-  ENDIF(${BLAS_INFO} equal "accelerate")
+  ENDIF(BLAS_INFO STREQUAL "accelerate")
 ENDIF()
 
 FIND_PACKAGE(LAPACK)
