@@ -22,6 +22,6 @@ To build the Torch with all dependencies for iOS:
 
     $ ./generate_ios_framework
 
-To build the Torch with all dependencies for Android:
+To build the Torch with all dependencies for Android set NDK_PATH variable and add it to your PATH, then start:
 
-    $ NDK_PATH=<path to android ndk> TOOLCHAIN=<android version> ARCH=<architecture> GCC=<gcc version>./generate_android_jni
+    $ TOOLCHAIN=<android version> ARCH=<architecture> GCC=<gcc version> ./generate_android_jni
