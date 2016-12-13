@@ -1,17 +1,13 @@
 #!/bin/bash
 
 # user-defined
-PATH="${NDK_PATH}:${PATH}"
-
 build_openblas() {
-  platform=android-$2
+  platform="android-$2"
   toolchain_dir=toolchain-${platform}
-  echo ${toolchain_dir}
-
   mkdir -p build/${toolchain_dir}
 
   if [[ $1 = ARMV7 ]]; then
-    if [[ $2 > 19 ]]; then
+    if [ "$2" -gt "19" ]; then
       echo "Please, select earlier toolchain version with the support of hard floats"
       exit 1
     fi
@@ -24,14 +20,17 @@ build_openblas() {
     echo "$1 architecture is not supported!"
     exit 1
   fi
-
+  
+  echo "NDK: ${NDK_PATH}"
+  
   sh ${NDK_PATH}/build/tools/make-standalone-toolchain.sh \
+    --system=linux-x86_64 \
     --platform=${platform} \
-    --install-dir=build/${toolchain_dir} \
+    --install-dir="./build/${toolchain_dir}" \
     --arch=${tarch} \
     --toolchain=${toolchain} \
     --ndk-dir=${NDK_PATH}
-
+  
   PATH="$(pwd)/build/${toolchain_dir}/bin:$PATH"
   
   cd OpenBLAS && make clean
