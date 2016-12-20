@@ -38,7 +38,7 @@ lua_State* state = NULL;
 
 int runTorch(const char* luaPaths, const char* initTorchFilePath, const char* initNNFilePath, const char* mainScriptPath)
 {
-    LOGI("System call runTorch: OK");
+    LOGI("System call runTorch edited: OK");
     if (!state)
     {
         lua_executable_dir("./lua");
@@ -261,6 +261,89 @@ int launchVinciFilter(int id, rgba* bitmap, int imageWidth, int imageHeight)
     return LUA_OK;
 }
 
+int doStringTorchFilter(int id, const char* filterString, rgba* bitmap, int imageWidth, int imageHeight) 
+{
+	THFloatStorage *input_storage = THFloatStorage_newWithSize4(1, 3, imageHeight, imageWidth);
+    THFloatTensor *input = THFloatTensor_newWithStorage4d(input_storage, 0, 1, 3 * imageHeight * imageWidth, 3, imageHeight * imageWidth, imageHeight, imageWidth, imageWidth, 1);
+    int x, y;
+
+    for (y = 0; y < imageHeight; y++) {
+        for (x = 0; x < imageWidth; x++) {
+            int offset = y * imageWidth + x;
+
+            float r = ((float)bitmap[offset].red - 123.939);
+            float g = ((float)bitmap[offset].green - 116.779);
+            float b = ((float)bitmap[offset].blue - 103.68);
+
+            THTensor_fastSet4d(input, 0, 0, y, x, b);
+            THTensor_fastSet4d(input, 0, 1, y, x, g);
+            THTensor_fastSet4d(input, 0, 2, y, x, r);
+        }
+    }
+
+    int resultWidth = imageWidth - 2;
+    int resultHeight = imageHeight - 2;
+
+    THFloatStorage *output_storage = THFloatStorage_newWithSize4(1, 3, resultHeight, resultWidth);
+    THFloatStorage_fill(output_storage, 0.0f);
+    THFloatTensor *output = THFloatTensor_newWithStorage4d(output_storage, 0, 1, 3 * resultHeight * resultWidth, 3, resultHeight * resultWidth, resultHeight, resultWidth, resultWidth, 1);
+
+    lua_getglobal(state, "applyFilter");
+    luaT_pushudata(state, input, "torch.FloatTensor");
+    luaT_pushudata(state, output, "torch.FloatTensor");
+    lua_pushinteger(state, id);
+
+	int ret = luaL_dostring(state, filterString);
+
+    if (ret)
+    {
+        const char* error_string = lua_tostring(state, -1);
+        LOGI(error_string);
+
+        return LUA_SCRIPT_FAILURE;
+    }
+
+    if (!lua_isnumber(state, -1))
+    {
+        LOGI("user function should return a value");
+        return LUA_SCRIPT_FAILURE;
+    }
+
+    ret = lua_tonumber(state, -1);
+    lua_pop(state, 1);
+
+    if (ret != 42)
+    {
+        LOGI("something goes wrong in user function");
+        return LUA_SCRIPT_FAILURE;
+    }
+
+    for (y = 0; y < resultHeight; y++) {
+        for (x = 0; x < resultWidth; x++) {
+            int offset = y * imageWidth + x;
+
+            float r = THTensor_fastGet4d(output, 0, 2, y, x)*255.0/2 + 255.0/2;
+            float g = THTensor_fastGet4d(output, 0, 1, y, x)*255.0/2 + 255.0/2;
+            float b = THTensor_fastGet4d(output, 0, 0, y, x)*255.0/2 + 255.0/2;
+
+            r = clampComponent(r);
+            g = clampComponent(g);
+            b = clampComponent(b);
+
+            bitmap[offset].red = (uint8_t)r;
+            bitmap[offset].green = (uint8_t)g;
+            bitmap[offset].blue = (uint8_t)b;
+        }
+    }
+
+    THFloatTensor_free(input);
+    THFloatStorage_free(input_storage);
+    THFloatTensor_free(output);
+    THFloatStorage_free(output_storage);
+
+    return LUA_OK;
+}
+
 JNIEXPORT int Java_com_vk_jni_Native_nativeRunTorch(JNIEnv *env, jobject jobj, jstring luaPaths, jstring initTorchFilePath, jstring initNNFilePath, jstring mainScriptPath) {
 
     const char *nativeLuaPaths = (*env)->GetStringUTFChars(env, luaPaths, 0);
@@ -297,6 +380,25 @@ JNIEXPORT int Java_com_vk_jni_Native_nativeTorchFilter(JNIEnv *env, jclass class
     }
 
     int ret = launchVinciFilter(nid, input, info.width, info.height);
+
+    //release resources
+    releaseBitmap(env, bitmap);
+
+    return ret;
+}
+
+JNIEXPORT int Java_com_vk_jni_Native_nativeDoStringTorchFilter(JNIEnv *env, jclass class, jobject bitmap, jstring filterString, int nid) {
+	// Original bitmap
+
+    AndroidBitmapInfo info;
+    rgba* input;
+    if(initBitmap(env, bitmap, &info, &input) != BITMAP_OK) {
+        return BITMAP_LOAD_ERROR;
+    }
+
+ 	const char *nativeFilterString = (*env)->GetStringUTFChars(env, filterString, 0);
+    int ret = doStringTorchFilter(nid, filterString, input, info.width, info.height);
+	(*env)->ReleaseStringUTFChars(env, filterString, nativeFilterString);
 
     //release resources
     releaseBitmap(env, bitmap);
