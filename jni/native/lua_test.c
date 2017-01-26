@@ -261,8 +261,11 @@ int launchVinciFilter(int id, rgba* bitmap, int imageWidth, int imageHeight)
     return LUA_OK;
 }
 
-int doStringTorchFilter(int id, const char* filterString, rgba* bitmap, int imageWidth, int imageHeight) 
+int doStringTorchFilter(const char* configString, rgba* bitmap, int imageWidth, int imageHeight, const char* pathToT7/*, int flag*/) 
 {
+	// шлём строку конфига
+    luaL_dostring(state, configString);
+
 	THFloatStorage *input_storage = THFloatStorage_newWithSize4(1, 3, imageHeight, imageWidth);
     THFloatTensor *input = THFloatTensor_newWithStorage4d(input_storage, 0, 1, 3 * imageHeight * imageWidth, 3, imageHeight * imageWidth, imageHeight, imageWidth, imageWidth, 1);
     int x, y;
@@ -288,14 +291,19 @@ int doStringTorchFilter(int id, const char* filterString, rgba* bitmap, int imag
     THFloatStorage_fill(output_storage, 0.0f);
     THFloatTensor *output = THFloatTensor_newWithStorage4d(output_storage, 0, 1, 3 * resultHeight * resultWidth, 3, resultHeight * resultWidth, resultHeight, resultWidth, resultWidth, 1);
 
+    LOGI("t7 path is: ");
+    LOGI(pathToT7);
+    // LOGI("flag is %d", flag);
+
     lua_getglobal(state, "applyFilter");
     luaT_pushudata(state, input, "torch.FloatTensor");
     luaT_pushudata(state, output, "torch.FloatTensor");
-    lua_pushinteger(state, id);
+    lua_pushstring(state, pathToT7);
+    //lua_pushboolean(state, flag);
 
-	int ret = luaL_dostring(state, filterString);
+    int ret = lua_pcall(state, 3, 1, 0);
 
-    if (ret)
+	if (ret)
     {
         const char* error_string = lua_tostring(state, -1);
         LOGI(error_string);
@@ -387,18 +395,19 @@ JNIEXPORT int Java_com_vk_jni_Native_nativeTorchFilter(JNIEnv *env, jclass class
     return ret;
 }
 
-JNIEXPORT int Java_com_vk_jni_Native_nativeDoStringTorchFilter(JNIEnv *env, jclass class, jobject bitmap, jstring filterString, int nid) {
+JNIEXPORT int Java_com_vk_jni_Native_nativeDoStringTorchFilter(JNIEnv *env, jclass class, jobject bitmap, jstring configString, jstring pathToT7/*, jint flag*/) {
 	// Original bitmap
-
     AndroidBitmapInfo info;
     rgba* input;
     if(initBitmap(env, bitmap, &info, &input) != BITMAP_OK) {
         return BITMAP_LOAD_ERROR;
     }
 
- 	const char *nativeFilterString = (*env)->GetStringUTFChars(env, filterString, 0);
-    int ret = doStringTorchFilter(nid, filterString, input, info.width, info.height);
-	(*env)->ReleaseStringUTFChars(env, filterString, nativeFilterString);
+    const char *nativePathToT7 = (*env)->GetStringUTFChars(env, pathToT7, 0);
+ 	const char *nativeConfigString = (*env)->GetStringUTFChars(env, configString, 0);
+    int ret = doStringTorchFilter(nativeConfigString, input, info.width, info.height, nativePathToT7/*, flag*/);
+	(*env)->ReleaseStringUTFChars(env, configString, nativeConfigString);
+	(*env)->ReleaseStringUTFChars(env, pathToT7, nativePathToT7);
 
     //release resources
     releaseBitmap(env, bitmap);
