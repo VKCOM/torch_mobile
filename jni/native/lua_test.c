@@ -198,8 +198,8 @@ int launchVinciFilter(int id, rgba* bitmap, int imageWidth, int imageHeight)
         }
     }
 
-    int resultWidth = imageWidth - 2;
-    int resultHeight = imageHeight - 2;
+    int resultWidth = imageWidth;
+    int resultHeight = imageHeight;
 
     THFloatStorage *output_storage = THFloatStorage_newWithSize4(1, 3, resultHeight, resultWidth);
     THFloatStorage_fill(output_storage, 0.0f);
@@ -284,8 +284,8 @@ int doStringTorchFilter(const char* configString, rgba* bitmap, int imageWidth, 
         }
     }
 
-    int resultWidth = imageWidth - 2;
-    int resultHeight = imageHeight - 2;
+    int resultWidth = imageWidth;
+    int resultHeight = imageHeight;
 
     THFloatStorage *output_storage = THFloatStorage_newWithSize4(1, 3, resultHeight, resultWidth);
     THFloatStorage_fill(output_storage, 0.0f);
